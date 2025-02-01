@@ -1,0 +1,6 @@
+ros2_prometheus:
+  ros__parameters:
+    port: 8000 # The port where the HTTP server will listen
+    topics: # The topics to monitor
+      - /turtle1/cmd_vel
+      - /turtle1/pose
