@@ -13,16 +13,6 @@ from ros2topic.verb.echo import get_msg_class
 from rosidl_runtime_py.convert import rosidl_parser
 
 
-class RequestHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        response = self.server.parent.get_metrics()
-
-        self.send_response(200)
-        self.send_header("Content-type", "text/plain")
-        self.end_headers()
-        self.wfile.write(response.encode("utf-8"))
-
-
 @dataclass
 class TopicMessage:
     time: int
@@ -45,8 +35,7 @@ class Ros2Prometheus(Node):
         )
         port = self.get_parameter("port").value
 
-        self._httpd = HTTPServer(("", port), RequestHandler)
-        self._httpd.parent = self
+        self._httpd = HTTPServer(("", port), make_handler_class(self))
         self.get_logger().info(f"Serving on {self._httpd.server_address}")
         self._httpd_thread = Thread(target=self._httpd.serve_forever, daemon=True)
 
@@ -144,6 +133,18 @@ class Ros2Prometheus(Node):
         self._httpd.shutdown()
         self._httpd.server_close()
         self._httpd_thread.join()
+
+
+def make_handler_class(node: Ros2Prometheus):
+    class RequestHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            response = node.get_metrics()
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
+            self.wfile.write(response.encode("utf-8"))
+
+    return RequestHandler
 
 
 def main(args=None):
