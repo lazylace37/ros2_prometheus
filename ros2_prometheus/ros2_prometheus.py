@@ -6,11 +6,12 @@ from typing import Any, List, Mapping, Optional
 import builtin_interfaces
 import rclpy
 from rcl_interfaces.msg import ParameterDescriptor
+from rclpy.expand_topic_name import expand_topic_name
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rclpy.time import Time
-from ros2topic.verb.echo import get_msg_class
 from rosidl_runtime_py.convert import rosidl_parser
+from rosidl_runtime_py.utilities import get_message
 
 
 @dataclass
@@ -61,9 +62,27 @@ class Ros2Prometheus(Node):
         self.timer = self.create_timer(1.0, self._timer_callback)
         self._httpd_thread.start()
 
+    def get_message_type(self, topic_name: str) -> Optional[Any]:
+        topics = self.get_topic_names_and_types()
+        expanded_name = expand_topic_name(
+            topic_name, self.get_name(), self.get_namespace()
+        )
+        for name, types in topics:
+            if name == expanded_name:
+                if len(types) == 0:
+                    self.get_logger().error(f"Topic {topic_name} has no types")
+                    return None
+                elif len(types) > 1:
+                    self.get_logger().error(
+                        f"Topic {topic_name} has multiple types: {types}"
+                    )
+                    return None
+                return get_message(types[0])
+        return None
+
     def _timer_callback(self):
         for topic_name in self._pending_topics:
-            message_type = get_msg_class(self, topic_name, include_hidden_topics=True)
+            message_type = self.get_message_type(topic_name)
             if message_type is not None:
                 self.create_subscription(
                     message_type,
@@ -77,6 +96,10 @@ class Ros2Prometheus(Node):
 
                 self.get_logger().info(f"Subscribed to {topic_name}")
                 self._pending_topics.remove(topic_name)
+            else:
+                self.get_logger().warn(
+                    f"Topic {topic_name} does not appear to be published yet"
+                )
         if len(self._pending_topics) == 0:
             self.timer.cancel()
 
